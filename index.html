@@ -358,7 +358,7 @@
 // ── BACKEND URL ──────────────────────────────────────────
 // Railway deploy ettikten sonra buraya Railway URL'ini yapıştır:
 // Örnek: const BACKEND = 'https://lexidost-backend.up.railway.app';
-const BACKEND = 'https://lexiadost-backend-production.up.railway.app';
+const BACKEND = 'BURAYA_RAILWAY_URL_YAZAR';
 // ─────────────────────────────────────────────────────────
 
 // NAV active link
@@ -395,7 +395,7 @@ document.querySelectorAll('.option-chip').forEach(c =>
 );
 
 // File
-let fileContent = '';
+let uploadedFile = null;
 const fileDrop = document.getElementById('file-drop');
 const fileInput = document.getElementById('file-input');
 fileDrop.addEventListener('click', () => fileInput.click());
@@ -408,11 +408,9 @@ fileDrop.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
 
 function loadFile(file) {
+  uploadedFile = file;
   document.getElementById('file-name-text').textContent = file.name;
   document.getElementById('file-name-display').style.display = 'flex';
-  const reader = new FileReader();
-  reader.onload = e => { fileContent = e.target.result; };
-  reader.readAsText(file, 'UTF-8');
 }
 
 // Convert
@@ -421,14 +419,6 @@ document.getElementById('convert-btn').addEventListener('click', async () => {
   errEl.classList.remove('visible');
 
   const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
-  const inputText = activeTab === 'text'
-    ? document.getElementById('text-input').value.trim()
-    : fileContent.trim();
-
-  if (!inputText) {
-    errEl.textContent = activeTab === 'text' ? 'Lütfen bir metin girin.' : 'Lütfen bir dosya seçin.';
-    errEl.classList.add('visible'); return;
-  }
 
   if (BACKEND === 'BURAYA_RAILWAY_URL_YAZAR') {
     errEl.textContent = 'Lütfen index.html içindeki BACKEND değişkenine Railway URL\'ini ekleyin.';
@@ -437,10 +427,10 @@ document.getElementById('convert-btn').addEventListener('click', async () => {
 
   const opts = [...document.querySelectorAll('.option-chip.selected input')].map(i => i.value);
   const optLines = [
-    opts.includes('kisa')   && '- Uzun cümleleri kısa ve net cümlelere böl.',
-    opts.includes('aktif')  && '- Edilgen yapıları etken yapıya çevir.',
+    opts.includes('kisa')     && '- Uzun cümleleri kısa ve net cümlelere böl.',
+    opts.includes('aktif')    && '- Edilgen yapıları etken yapıya çevir.',
     opts.includes('paragraf') && '- Uzun paragrafları 3-4 cümlelik kısa bloklara ayır.',
-    opts.includes('vurgu')  && '- Anahtar kavramları **kalın** yaz.',
+    opts.includes('vurgu')    && '- Anahtar kavramları **kalın** yaz.',
   ].filter(Boolean).join('\n');
 
   document.getElementById('convert-btn').disabled = true;
@@ -448,11 +438,36 @@ document.getElementById('convert-btn').addEventListener('click', async () => {
   document.getElementById('result-section').classList.remove('visible');
 
   try {
-    const res = await fetch(`${BACKEND}/api/convert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: inputText, options: optLines })
-    });
+    let res;
+
+    if (activeTab === 'file') {
+      // Dosya modu — PDF veya TXT FormData ile gönder
+      if (!uploadedFile) {
+        errEl.textContent = 'Lütfen bir dosya seçin.';
+        errEl.classList.add('visible');
+        return;
+      }
+      const form = new FormData();
+      form.append('file', uploadedFile);
+      form.append('options', optLines);
+      res = await fetch(`${BACKEND}/api/convert-file`, {
+        method: 'POST',
+        body: form
+      });
+    } else {
+      // Metin modu
+      const inputText = document.getElementById('text-input').value.trim();
+      if (!inputText) {
+        errEl.textContent = 'Lütfen bir metin girin.';
+        errEl.classList.add('visible'); return;
+      }
+      res = await fetch(`${BACKEND}/api/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: inputText, options: optLines })
+      });
+    }
+
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `Sunucu hatası: ${res.status}`);
